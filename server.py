@@ -107,7 +107,7 @@ def getTrendSlope(iot):
     slope = {}
     for food in foods:
         linreg.fit(np.array(x).reshape(-1,1), iot[food][food].values)
-        slope[food] = linreg.intercept_
+        slope[food] = linreg.coef_[0]
 
     return slope
 
