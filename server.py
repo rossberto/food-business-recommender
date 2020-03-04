@@ -72,7 +72,7 @@ def userLocationGeocoding(string):
 '''
     GOOGLE TRENDS
 '''
-def getGoogleTrends(df):
+def getGoogleTrends():
     pytrends = TrendReq(hl='es-MX', tz=360)
 
     resultados = []
@@ -83,13 +83,15 @@ def getGoogleTrends(df):
     return resultados
 
 def getTrends(google_trends, state):
-    requests = google_trends[0].join(resultados[1:]).T
+    requests = google_trends[0].join(google_trends[1:]).T
     return requests['Yucatán'].sort_values(ascending=False)
 
 '''
     INTEREST OVER TIME
 '''
-def getGoogloIOT(foods):
+def getGoogleIOT():
+    pytrends = TrendReq(hl='es-MX', tz=360)
+
     iot = {}
     for comida in foods:
         print(comida)
@@ -98,7 +100,7 @@ def getGoogloIOT(foods):
 
     return iot
 
-def getTrendSlope(foods, iot):
+def getTrendSlope(iot):
     x = [i+1 for i in range(len(iot['Desayunos']['Desayunos']))]
     linreg = LinearRegression()
 
@@ -109,7 +111,10 @@ def getTrendSlope(foods, iot):
 
     return slope
 
-def addSlopeToDf(df):
+'''
+    DF GOOGLE IOT
+'''
+def addSlopeToDf(slope, df):
     df['slope'] = ''
     for key in slope:
         df['slope'].loc[key] = slope[key]
@@ -120,7 +125,7 @@ def addSlopeToDf(df):
 '''
     YELP
 '''
-def searchYelp(foods, location):
+def searchYelp(location):
     api_key = os.getenv("YELP_API_KEY")
     endpoint = 'https://api.yelp.com/v3/businesses/search?'
 
@@ -142,15 +147,16 @@ def searchYelp(foods, location):
 
     return yelp_search
 
-def getYelpDf(foods, yelp_search):
+def getYelpDf(yelp_search):
     lugares = pd.concat(yelp_search, axis=0, sort=False)
     lugares.reset_index(inplace=True)
 
     ratings = dict(lugares.tipo.value_counts())
-    for comida in inegi_results:
+    print(lugares.columns)
+    for comida in foods:
         ratings[comida] = lugares[lugares.tipo == comida]['rating'].mean()
 
-    yf = pd.concat(yelp_search)
+    yf = pd.concat(yelp_search, sort=False)
     yf.drop(columns = ['alias', 'display_phone', 'location', 'id', 'image_url', 'is_closed', 'phone', 'transactions', 'url'], inplace=True)
     yf.reset_index(inplace=True)
     return yf
@@ -171,6 +177,7 @@ def flatLatLong(yf):
     yf[['latitude', 'longitude']] = json_normalize(yf.coordinates)
     return yf
 
+'''
 def getTopYfLocs(df, yf):
     top_types = df.sort_values(by='score', ascending=False).head().index
 
@@ -179,8 +186,9 @@ def getTopYfLocs(df, yf):
         top_yf_locs[top] = yf[yf.tipo==top][['latitude', 'longitude']].head().values
 
     return top_yf_locs
+'''
 
-def getTopYf(yf):
+def getTopYf(df, yf):
     top_yf = pd.DataFrame(columns = yf.columns)
     top_types = df.sort_values(by='score', ascending=False).head().index
 
@@ -192,13 +200,13 @@ def getTopYf(yf):
 '''
     FOURSQUARE
 '''
-def getFsResults():
+def getFsResults(top_yf, location):
     client_id = os.getenv("FS_CLIENT_ID")
     client_secret = os.getenv("FS_CLIENT_SECRET")
     client = foursquare.Foursquare(client_id=client_id, client_secret=client_secret)
 
     fs_results = {}
-    for comida in top_yf_locs.keys():
+    for comida in top_yf.tipo.unique():
         print(comida)
         fs_results[comida] = client.venues.search(params={'query': comida, 'intent':'checkin', 'll': str(location.latitude)+', '+str(location.longitude), 'radius':3000, 'limit':10})
 
@@ -220,9 +228,50 @@ def getFsLocs(fs_results):
 
 @app.route('/')
 def start():
+    # Inegi
+    print('Getting Inegi results...')
     inegi_results = inegiTask('YUCATAN', 'Mérida')
+    print('Inegi results done.')
 
+    # Google trends
+    print('Getting Google trends...')
+    google_trends = getGoogleTrends()
+    trends =  getTrends(google_trends, 'Yucatán')
+    print('Google trends done.')
+
+    # Google interest over time
+    print('Getting Google interest over time...')
+    iot = getGoogleIOT()
+    slope = getTrendSlope(iot)
+    print('Google IOT done.')
+
+    # Geocode location
+    print('Getting location geocode...')
     colonia = request.args.get('colonia')
-    location = userLocationGeocoding(colonia)
+    location = userLocationGeocoding('pensiones merida yucatan')
+    print('Location geocode done.')
 
-    return colonia
+    # Yelp
+    print('Getting Yelp searches...')
+    yelp_search = searchYelp(location)
+    yf = getYelpDf(yelp_search)
+    yf = flatLatLong(yf)
+    print('Yelp searches done.')
+
+    # DF Score
+    print('Calculating results score...')
+    df = getInegiDfResult(inegi_results)
+    df['GoogleTrend'] = trends
+    df = addSlopeToDf(slope, df)
+    df['YelpRating'] = yf.groupby('tipo').mean().rating
+    df = calculateScore(df)
+    print('Score done.')
+
+    # Top Yelp locations
+    top_yf = getTopYf(df, yf)
+
+    # Foursquare locations
+    fs_results = getFsResults(top_yf, location)
+    fs_locs = getFsLocs(fs_results)
+
+    return flask.jsonify(fs_locs=fs_locs)
