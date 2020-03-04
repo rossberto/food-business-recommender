@@ -20,6 +20,15 @@ import folium
 app = Flask(__name__)
 
 '''
+    VARIABLES
+'''
+foods = ['Cocina Económica', 'Antojitos', 'Pizza', 'Hamburguesas', 'Hot Dogs', 'Sushi', 'Tamales', 'Mariscos',
+         'Pescado', 'Tacos', 'Carne', 'Asada', 'Panuchos', 'Cochinita', 'Pollo', 'Desayunos', 'Tortas', 'Mondongo',
+         'Menudo', 'Memelas', 'Empanadas', 'Chicharrón', 'Gorditas', 'Costillas', 'Carnitas', 'Doraditas',
+         'Baguettes', 'Parrilla', 'Huaraches', 'Rosticería', 'China', 'Yucateca', 'Tabasqueña', 'Arrachera',
+         'Pastor', 'Birria', 'Barbacoa', 'Carnero', 'Pozole', 'Enchiladas', 'Chilaquiles']
+
+'''
     INEGI Methods
 '''
 def prepareInegi():
@@ -27,8 +36,8 @@ def prepareInegi():
     inegi.drop(columns=['nom_estab', 'per_ocu', 'fecha_alta', 'nom_processed', 'tipoUniEco', 'localidad'], inplace=True)
     return inegi
 
-def getInegiByState(state):
-    return inegi[inegi['entidad']==state]
+def getInegiByState(estado, inegi):
+    return inegi[inegi['entidad']==estado]
 
 def inegiFilterByMunicipio(municipio, df):
     return df.drop(df[df['municipio']!=municipio].index)
@@ -41,6 +50,15 @@ def getInegiResults(df):
 
     return results
 
+def inegiTask(estado, municipio):
+    inegi = prepareInegi()
+    inegi = getInegiByState(estado, inegi)
+    inegi = inegiFilterByMunicipio(municipio, inegi)
+    return getInegiResults(inegi)
+
+'''
+    DF INEGI
+'''
 def getInegiDfResult(inegi_results):
     return pd.DataFrame(inegi_results.items(), columns = ['Index', 'InegiCount']).set_index('Index')
 
@@ -54,7 +72,7 @@ def userLocationGeocoding(string):
 '''
     GOOGLE TRENDS
 '''
-def getGoogleTrends(foods, df):
+def getGoogleTrends(df):
     pytrends = TrendReq(hl='es-MX', tz=360)
 
     resultados = []
@@ -202,5 +220,9 @@ def getFsLocs(fs_results):
 
 @app.route('/')
 def start():
+    inegi_results = inegiTask('YUCATAN', 'Mérida')
 
-    return 'Hola mundo'
+    colonia = request.args.get('colonia')
+    location = userLocationGeocoding(colonia)
+
+    return colonia
