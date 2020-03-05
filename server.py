@@ -3,6 +3,7 @@ load_dotenv()
 
 import os
 from flask import Flask, request
+from flask_cors import CORS
 import flask
 
 import numpy as np
@@ -18,6 +19,7 @@ import foursquare
 import folium
 
 app = Flask(__name__)
+CORS(app)
 
 '''
     VARIABLES
@@ -197,6 +199,17 @@ def getTopYf(df, yf):
 
     return top_yf
 
+def getTopCompetitors(top_yf):
+    top_yf_list = []
+    for tipo in top_yf.tipo.unique():
+        toadd = {'tipo': tipo}
+        for index in top_yf[top_yf.tipo==tipo].index:
+            toadd['name'] = top_yf.name.loc[index]
+            toadd['coords'] = [top_yf.latitude.loc[index], top_yf.longitude.loc[index]]
+            top_yf_list.append(toadd)
+
+    return top_yf_list
+
 '''
     FOURSQUARE
 '''
@@ -269,9 +282,12 @@ def start():
 
     # Top Yelp locations
     top_yf = getTopYf(df, yf)
+    top_competitors = getTopCompetitors(top_yf)
 
+    '''
     # Foursquare locations
     fs_results = getFsResults(top_yf, location)
     fs_locs = getFsLocs(fs_results)
+    '''
 
-    return flask.jsonify(fs_locs=fs_locs)
+    return flask.jsonify(top_competitors=top_competitors)
