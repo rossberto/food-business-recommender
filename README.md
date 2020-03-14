@@ -18,6 +18,8 @@ Biggest score is the recommendation.
 
 Just download the Proyect.ipynb file in open it with Jupyter Notebook.
 
+Instructions on notebook.
+
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
 
