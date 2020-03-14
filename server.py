@@ -6,6 +6,7 @@ from flask import Flask, request
 from flask_cors import CORS
 import flask
 
+from removeaccents import remove_accents
 import numpy as np
 import pandas as pd
 from geopy.geocoders import Nominatim
@@ -86,7 +87,7 @@ def getGoogleTrends():
 
 def getTrends(google_trends, state):
     requests = google_trends[0].join(google_trends[1:]).T
-    return requests['Yucatán'].sort_values(ascending=False)
+    return requests[state].sort_values(ascending=False)
 
 '''
     INTEREST OVER TIME
@@ -130,11 +131,13 @@ def addSlopeToDf(slope, df):
 def searchYelp(location):
     api_key = os.getenv("YELP_API_KEY")
     endpoint = 'https://api.yelp.com/v3/businesses/search?'
+    print(location.latitude, location.longitude)
 
     yelp_search = []
     for comida in foods:
         term = 'term={}&'.format(comida)
         print(term)
+
         latitude = 'latitude='+str(location.latitude)+'&'
         longitude = 'longitude='+str(location.longitude)+'&'
         locale = 'locale=es_MX&'
@@ -154,7 +157,6 @@ def getYelpDf(yelp_search):
     lugares.reset_index(inplace=True)
 
     ratings = dict(lugares.tipo.value_counts())
-    print(lugares.columns)
     for comida in foods:
         ratings[comida] = lugares[lugares.tipo == comida]['rating'].mean()
 
@@ -170,7 +172,7 @@ def calculateScore(df):
     #df['score'] = df.GoogleTrend/100 - df.YelpRating/5 - df.InegiCount/df.InegiCount.max()
     #df['score'] = 0.05*df.GoogleTrend/df.YelpRating - df.InegiCount/df.InegiCount.max() + 0.5*df.slope/df.slope.max()
     df['score'] = df.GoogleTrend/100 + df.slope/df.slope.max() - df.YelpRating/5 - df.InegiCount/df.InegiCount.max()
-    return df.sort_values(by='score', ascending=False).head()
+    return df.sort_values(by='score', ascending=False).head(3)
 
 '''
     YELP LOCATIONS DATAFRAME
@@ -178,17 +180,6 @@ def calculateScore(df):
 def flatLatLong(yf):
     yf[['latitude', 'longitude']] = json_normalize(yf.coordinates)
     return yf
-
-'''
-def getTopYfLocs(df, yf):
-    top_types = df.sort_values(by='score', ascending=False).head().index
-
-    top_yf_locs = {}
-    for top in top_types:
-        top_yf_locs[top] = yf[yf.tipo==top][['latitude', 'longitude']].head().values
-
-    return top_yf_locs
-'''
 
 def getTopYf(df, yf):
     top_yf = pd.DataFrame(columns = yf.columns)
@@ -202,74 +193,56 @@ def getTopYf(df, yf):
 def getTopCompetitors(top_yf):
     top_yf_list = []
     for tipo in top_yf.tipo.unique():
-        toadd = {'tipo': tipo}
         for index in top_yf[top_yf.tipo==tipo].index:
+            toadd = {'tipo': tipo}
             toadd['name'] = top_yf.name.loc[index]
             toadd['coords'] = [top_yf.latitude.loc[index], top_yf.longitude.loc[index]]
             top_yf_list.append(toadd)
-
     return top_yf_list
-
-'''
-    FOURSQUARE
-'''
-def getFsResults(top_yf, location):
-    client_id = os.getenv("FS_CLIENT_ID")
-    client_secret = os.getenv("FS_CLIENT_SECRET")
-    client = foursquare.Foursquare(client_id=client_id, client_secret=client_secret)
-
-    fs_results = {}
-    for comida in top_yf.tipo.unique():
-        print(comida)
-        fs_results[comida] = client.venues.search(params={'query': comida, 'intent':'checkin', 'll': str(location.latitude)+', '+str(location.longitude), 'radius':3000, 'limit':10})
-
-    return fs_results
-
-def getFsLocs(fs_results):
-    fs_locs = {}
-    for result in fs_results:
-        result_locs = []
-        for i in range(len(fs_results[result]['venues'])):
-            loc = {}
-            loc[fs_results[result]['venues'][i]['name']] = []
-            loc[fs_results[result]['venues'][i]['name']].append(fs_results[result]['venues'][i]['location']['lat'])
-            loc[fs_results[result]['venues'][i]['name']].append(fs_results[result]['venues'][i]['location']['lng'])
-            result_locs.append(loc)
-        fs_locs[result] = result_locs
-
-    return fs_locs
 
 @app.route('/')
 def start():
+    estado = request.args.get('estado')
+    ciudad = request.args.get('ciudad')
+    colonia = request.args.get('colonia')
+
+    print(estado, ciudad, colonia)
+
     # Inegi
     print('Getting Inegi results...')
-    inegi_results = inegiTask('YUCATAN', 'Mérida')
+    inegi_results = inegiTask(remove_accents(estado.upper()), ciudad)
     print('Inegi results done.')
+    print(' ')
 
     # Google trends
     print('Getting Google trends...')
     google_trends = getGoogleTrends()
-    trends =  getTrends(google_trends, 'Yucatán')
+    trends =  getTrends(google_trends, estado)
     print('Google trends done.')
+    print(' ')
 
     # Google interest over time
     print('Getting Google interest over time...')
     iot = getGoogleIOT()
     slope = getTrendSlope(iot)
     print('Google IOT done.')
+    print(' ')
 
     # Geocode location
     print('Getting location geocode...')
-    colonia = request.args.get('colonia')
-    location = userLocationGeocoding('pensiones merida yucatan')
+    user_loc = colonia + ' ' + ciudad + ' ' + estado
+    print('Getting coords from: ', user_loc)
+    location = userLocationGeocoding(user_loc)
+    print(location)
     print('Location geocode done.')
+    print(' ')
 
     # Yelp
     print('Getting Yelp searches...')
     yelp_search = searchYelp(location)
     yf = getYelpDf(yelp_search)
-    yf = flatLatLong(yf)
     print('Yelp searches done.')
+    print(' ')
 
     # DF Score
     print('Calculating results score...')
@@ -279,15 +252,12 @@ def start():
     df['YelpRating'] = yf.groupby('tipo').mean().rating
     df = calculateScore(df)
     print('Score done.')
+    print(' ')
 
     # Top Yelp locations
+    yf = flatLatLong(yf)
     top_yf = getTopYf(df, yf)
     top_competitors = getTopCompetitors(top_yf)
 
-    '''
-    # Foursquare locations
-    fs_results = getFsResults(top_yf, location)
-    fs_locs = getFsLocs(fs_results)
-    '''
 
-    return flask.jsonify(top_competitors=top_competitors)
+    return flask.jsonify(top_competitors=top_competitors, recomend=df.index[0])
