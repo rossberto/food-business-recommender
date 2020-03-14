@@ -6,10 +6,10 @@ A data analytics project to recommend a food business restaurant by location and
 
 This recommender uses offer, demand, satisfaction and trends to calculate a score.
 
-Offer <-- Inegi
-Demand <-- Google Trends
-Satisfaction <-- Yelp
-Trends <-- Google Trends Interest Over Time
+* Offer <-- Inegi
+* Demand <-- Google Trends
+* Satisfaction <-- Yelp
+* Trends <-- Google Trends Interest Over Time
 
 ##### Score = Demand + Trends - Offer - Satisfaction
 Biggest score is the recommendation.
@@ -19,6 +19,13 @@ Biggest score is the recommendation.
 Just download the Proyect.ipynb file in open it with Jupyter Notebook.
 
 Instructions on notebook.
+
+To use it as backend, download server.py and run it with Flask:
+
+```bash
+export FLASK_APP=hello.py
+flask run
+```
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
