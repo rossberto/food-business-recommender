@@ -16,14 +16,12 @@ Biggest score is the recommendation.
 
 ## Usage
 
-Just download the Proyect.ipynb file in open it with Jupyter Notebook.
-
-Instructions on notebook.
+Just download the Proyect.ipynb file in open it with Jupyter Notebook. Instructions on notebook.
 
 To use it as backend, download server.py and run it with Flask:
 
 ```bash
-export FLASK_APP=hello.py
+export FLASK_APP=server.py
 flask run
 ```
 
